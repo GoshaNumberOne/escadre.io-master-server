@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .  # образ из Dockerfile
+    container_name: escadre-server
+    ports:
+      - "3000:3000"  # хост:контейнер
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped  # автоперезапуск при падении
+    volumes:
+      - ./:/app  # для разработки: синхронизация кода с хостом
+      - /app/node_modules  # изолирует node_modules контейнера
