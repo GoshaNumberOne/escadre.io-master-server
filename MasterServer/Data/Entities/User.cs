@@ -1,23 +1,23 @@
-using System;
-using System.Collections.Generic;
+using Microsoft.AspNetCore.Identity; // Добавить этот using
 
 namespace MasterServer.Data.Entities
 {
-    public class User
+    // Наследуемся от IdentityUser
+    public class User : IdentityUser
     {
-        public string Id { get; set; } = Guid.NewGuid().ToString();
-        public required string Email { get; set; }
+        // IdentityUser уже содержит:
+        // Id (string), UserName, NormalizedUserName, Email, NormalizedEmail,
+        // EmailConfirmed, PasswordHash, SecurityStamp, ConcurrencyStamp,
+        // PhoneNumber, PhoneNumberConfirmed, TwoFactorEnabled, LockoutEnd,
+        // LockoutEnabled, AccessFailedCount
+
+        // Добавляем твои кастомные поля
         public required string Nickname { get; set; }
-        public required string PasswordHash { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public bool IsEmailConfirmed { get; set; } = false;
-        public string? EmailConfirmationToken { get; set; }
-        public DateTime? EmailConfirmationTokenExpiry { get; set; }
-        public string? PasswordResetToken { get; set; }
-        public DateTime? PasswordResetTokenExpiry { get; set; }
 
+        // RefreshTokens и PlayerStat остаются как есть,
+        // но FK в PlayerStat будет ссылаться на Id из IdentityUser
         public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
-
         public virtual PlayerStat? Stats { get; set; }
     }
 }

@@ -4,9 +4,11 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using MasterServer.Configuration;
 using MasterServer.Data;
+using MasterServer.Data.Entities;
 using MasterServer.Hubs;
 using MasterServer.Services.Abstractions;
 using MasterServer.Services.Implementations;
+using Microsoft.AspNetCore.Identity;
 using MasterServer.Services.Abstractions;
 using MasterServer.Services.Implementations;
 using Microsoft.AspNetCore.Authorization;
@@ -23,15 +25,17 @@ if (jwtSettings == null || string.IsNullOrEmpty(jwtSettings.SecretKey) || string
 }
 if (string.IsNullOrEmpty(connectionString))
 {
-    Console.WriteLine("Error: Connection string 'DefaultConnection' not found in appsettings.json.");
+    // Замени Console.WriteLine на исключение, если строка подключения критична
+    throw new InvalidOperationException("Connection string 'DefaultConnection' not found in appsettings.json. Application cannot start.");
 }
-
 if (!string.IsNullOrEmpty(connectionString))
 {
    builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 }
 
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -39,8 +43,32 @@ builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddSingleton<IGameServerManager, InMemoryGameServerManager>();
 builder.Services.AddSingleton<IEmailService, ConsoleEmailService>();
 
+
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
+
+// --- ДОБАВЛЕНИЕ IDENTITY ---
+builder.Services.AddIdentityCore<User>(options =>
+{
+    // Настройки пароля
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireNonAlphanumeric = false; // Можно изменить
+    options.Password.RequiredLength = 6;
+
+    // Настройки блокировки пользователя
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.AllowedForNewUsers = true;
+
+    // Настройки пользователя
+    options.User.RequireUniqueEmail = true; // Email должен быть уникальным
+
+    // --- Настройки подтверждения Email ---
+    options.SignIn.RequireConfirmedEmail = true; // Требовать подтвержденный email для входа
+})
+.AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders().AddSignInManager<SignInManager<User>>(); // Добавляет провайдеры для генерации токенов (для email, сброса пароля и т.д.)
 
 if (jwtSettings != null && !string.IsNullOrEmpty(jwtSettings.SecretKey))
 {

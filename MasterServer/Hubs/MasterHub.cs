@@ -149,22 +149,26 @@ namespace MasterServer.Hubs
              await Clients.Caller.SendAsync("PasswordResetRequested", "If an account with that email exists, a password reset link has been sent.");
         }
 
-        public async Task ResetPassword(string resetToken, string newPassword)
+        public async Task ResetPassword(string userId, string code, string newPassword) // Принимаем все три
         {
-            if (string.IsNullOrEmpty(resetToken) || string.IsNullOrEmpty(newPassword))
+            // Базовая валидация здесь
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(newPassword))
             {
-                await Clients.Caller.SendAsync("PasswordResetFailed", "Reset token and new password are required.");
+                await Clients.Caller.SendAsync("PasswordResetFailed", "User ID, reset code, and new password are required.");
                 return;
             }
-
-            var result = await _authService.ResetPasswordAsync(resetToken, newPassword);
+            // Передаем все три параметра в сервис
+            var result = await _authService.ResetPasswordAsync(userId, code, newPassword);
             if (result.IsSuccess)
             {
                 await Clients.Caller.SendAsync("PasswordResetSuccess", "Password has been reset successfully. Please login with your new password.");
             }
             else
             {
-                 await Clients.Caller.SendAsync("PasswordResetFailed", result.Error ?? "Failed to reset password.");
+                var errorMessages = result.Errors != null && result.Errors.Any()
+                                ? string.Join(", ", result.Errors)
+                                : result.Error ?? "Failed to reset password.";
+                await Clients.Caller.SendAsync("PasswordResetFailed", errorMessages);
             }
         }
 
@@ -179,22 +183,27 @@ namespace MasterServer.Hubs
              await Clients.Caller.SendAsync("LoggedOut", "Successfully logged out.");
         }
 
-        public async Task ConfirmEmail(string confirmationToken)
+        public async Task ConfirmEmail(string userId, string code) // Теперь принимаем два параметра
         {
-             if (string.IsNullOrEmpty(confirmationToken))
-             {
-                 await Clients.Caller.SendAsync("EmailConfirmationFailed", "Confirmation token is required.");
-                 return;
-             }
-             var result = await _authService.ConfirmEmailAsync(confirmationToken);
-             if (result.IsSuccess)
-             {
-                  await Clients.Caller.SendAsync("EmailConfirmationSuccess", "Email confirmed successfully. You can now login.");
-             }
-             else
-             {
-                   await Clients.Caller.SendAsync("EmailConfirmationFailed", result.Error ?? "Failed to confirm email.");
-             }
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code)) // Проверяем оба
+            {
+                await Clients.Caller.SendAsync("EmailConfirmationFailed", "User ID and confirmation code are required.");
+                return;
+            }
+            // Передаем оба параметра в сервис
+            var result = await _authService.ConfirmEmailAsync(userId, code);
+            if (result.IsSuccess)
+            {
+                await Clients.Caller.SendAsync("EmailConfirmationSuccess", "Email confirmed successfully. You can now login.");
+            }
+            else
+            {
+                // Передаем ошибки из результата, если они есть
+                var errorMessages = result.Errors != null && result.Errors.Any()
+                                    ? string.Join(", ", result.Errors)
+                                    : result.Error ?? "Failed to confirm email.";
+                await Clients.Caller.SendAsync("EmailConfirmationFailed", errorMessages);
+            }
         }
 
         [Authorize] 

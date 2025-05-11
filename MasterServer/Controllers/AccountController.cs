@@ -1,6 +1,8 @@
 using MasterServer.Services.Abstractions;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
+using System.Linq; // Для .Any() и string.Join()
+using System.Threading.Tasks;
 
 namespace MasterServer.Controllers
 {
@@ -16,22 +18,28 @@ namespace MasterServer.Controllers
         }
 
         [HttpGet("confirm-email")]
-        public async Task<IActionResult> ConfirmEmail([FromQuery] string token)
+        public async Task<IActionResult> ConfirmEmail([FromQuery] string userId, [FromQuery] string code) // Принимаем userId и code
         {
-            if (string.IsNullOrEmpty(token))
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code))
             {
-                return BadRequest("Confirmation token is required.");
+                return BadRequest("User ID and confirmation code are required.");
             }
 
-            var result = await _authService.ConfirmEmailAsync(token);
+            // Передаем оба параметра в сервис
+            var result = await _authService.ConfirmEmailAsync(userId, code);
 
             if (result.IsSuccess)
             {
-                return Ok("Email confirmed successfully!");
+                // TODO: Вернуть красивую HTML страницу об успехе или редирект
+                return Ok("Email confirmed successfully! You can now login.");
             }
             else
             {
-                return BadRequest(result.Error ?? "Failed to confirm email.");
+                // TODO: Вернуть красивую HTML страницу об ошибке
+                var errorMessages = result.Errors != null && result.Errors.Any()
+                                   ? string.Join(", ", result.Errors)
+                                   : result.Error ?? "Failed to confirm email.";
+                return BadRequest(errorMessages);
             }
         }
 
