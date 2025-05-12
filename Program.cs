@@ -9,6 +9,7 @@ using MasterServer.Hubs;
 using MasterServer.Services.Abstractions;
 using MasterServer.Services.Implementations;
 using Microsoft.AspNetCore.Identity;
+using MasterServer.Configuration;
 using MasterServer.Services.Abstractions;
 using MasterServer.Services.Implementations;
 using Microsoft.AspNetCore.Authorization;
@@ -34,6 +35,14 @@ if (!string.IsNullOrEmpty(connectionString))
     options.UseNpgsql(connectionString));
 }
 
+builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
+var smtpSettings = builder.Configuration.GetSection("SmtpSettings").Get<SmtpSettings>();
+if (smtpSettings == null || string.IsNullOrEmpty(smtpSettings.Host) /* ... и другие проверки ... */)
+{
+    Console.WriteLine("Error: SMTP settings are missing or incomplete.");
+    // throw new InvalidOperationException("SMTP settings are missing or incomplete.");
+}
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -41,7 +50,7 @@ builder.Services.AddScoped<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddSingleton<IGameServerManager, InMemoryGameServerManager>();
-builder.Services.AddSingleton<IEmailService, ConsoleEmailService>();
+builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
 
 
 builder.Services.AddControllers();
