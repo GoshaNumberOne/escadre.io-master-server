@@ -3,6 +3,8 @@ name: Test and Build
 on:
   push:  # запускается для всех веток кроме main
     branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
 
 jobs:
   test-and-build:
@@ -22,6 +24,12 @@ jobs:
     
     - name: Run tests
       run: dotnet test --no-restore
+      
+    - name: Debug info
+      run: |
+       echo "Branch: ${{ github.ref }}"
+       echo "Event: ${{ github.event_name }}"
+       ls -la  # Проверить содержимое рабочей директории
     
     - name: Build
       run: dotnet build --configuration Release --no-restore
