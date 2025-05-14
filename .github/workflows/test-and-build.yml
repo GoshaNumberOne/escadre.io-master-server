@@ -2,7 +2,7 @@ name: Test and Build
 
 on:
   push:  # запускается для всех веток кроме main
-    branches-ignore: [ 'main' ]
+    branches: [ '*' ]
 
 jobs:
   test-and-build:
