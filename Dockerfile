@@ -1,4 +1,5 @@
 #  образ Node.js на Alpine (лёгкий)
+#  образ Node.js на Alpine (лёгкий)
 FROM node:20-alpine
 
 # рабочая директория в контейнере
