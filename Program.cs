@@ -40,6 +40,8 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
+app.MapGet("/", () => "Добро пожаловать на сервер escadre.io!");
+
 app.MapControllers();
 //app.MapHub<YourMasterHub>("/masterHub"); 
 app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub"); 
