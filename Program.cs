@@ -21,6 +21,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseRouting();
 
+app.MapGet("/", () => "Добро пожаловать на сервер escadre.io!"); //добавил обработчика для корневого маршрута (/)
+
 var summaries = new[]
 {
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
