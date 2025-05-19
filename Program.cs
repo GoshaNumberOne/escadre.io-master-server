@@ -6,7 +6,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
 builder.Services.AddSignalR(); 
-builder.WebHost.UseUrls("http://localhost:5076", "https://localhost:7169");  //добавил явные порты
 
 var app = builder.Build();
 
@@ -17,7 +16,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// app.UseHttpsRedirection(); закоментил на время
+app.UseHttpsRedirection(); закоментил на время
 
 app.UseRouting();
 
@@ -28,30 +27,24 @@ var summaries = new[]
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
 
-//app.MapGet("/weatherforecast", () =>
-//{
-//    var forecast =  Enumerable.Range(1, 5).Select(index =>
-//        new WeatherForecast
-//        (
-//            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-//            Random.Shared.Next(-20, 55),
-//            summaries[Random.Shared.Next(summaries.Length)]
-//        ))
-//        .ToArray();
-//    return forecast;
-//})
+app.MapGet("/weatherforecast", () =>
+{
+    var forecast =  Enumerable.Range(1, 5).Select(index =>
+        new WeatherForecast
+        (
+            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+            Random.Shared.Next(-20, 55),
+            summaries[Random.Shared.Next(summaries.Length)]
+        ))
+        .ToArray();
+    return forecast;
+})
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
-//app.MapControllers();    закоментил 
+app.MapControllers();    закоментил 
 //app.MapHub<YourMasterHub>("/masterHub"); 
-//app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub");   закоментил
-
-app.Use(async (context, next) => { //
-    Console.WriteLine($"Получен запрос: {context.Request.Path}"); //
-    await next(); //
-    Console.WriteLine($"Отправлен ответ: {context.Response.StatusCode}"); //
-}); //
+app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub");   закоментил
 
 app.Run();
 
