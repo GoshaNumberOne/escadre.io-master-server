@@ -6,6 +6,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
 builder.Services.AddSignalR(); 
+builder.WebHost.UseUrls("http://localhost:5076", "https://localhost:7169");  //добавил явные порты
 
 var app = builder.Build();
 
