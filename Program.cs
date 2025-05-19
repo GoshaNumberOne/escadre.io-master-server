@@ -28,24 +28,30 @@ var summaries = new[]
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
+//app.MapGet("/weatherforecast", () =>
+//{
+//    var forecast =  Enumerable.Range(1, 5).Select(index =>
+//        new WeatherForecast
+//        (
+//            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+//            Random.Shared.Next(-20, 55),
+//            summaries[Random.Shared.Next(summaries.Length)]
+//        ))
+//        .ToArray();
+//    return forecast;
+//})
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
-app.MapControllers();
+//app.MapControllers();    закоментил 
 //app.MapHub<YourMasterHub>("/masterHub"); 
-app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub"); 
+//app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub");   закоментил
+
+app.Use(async (context, next) => { //
+    Console.WriteLine($"Получен запрос: {context.Request.Path}"); //
+    await next(); //
+    Console.WriteLine($"Отправлен ответ: {context.Response.StatusCode}"); //
+}); //
 
 app.Run();
 
