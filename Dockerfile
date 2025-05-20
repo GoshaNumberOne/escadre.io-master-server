@@ -1,20 +1,11 @@
-#  образ Node.js на Alpine (лёгкий)
-FROM node:20-alpine
-
-# рабочая директория в контейнере
-WORKDIR /app
-
-# Копи package.json и package-lock.json (для оптимизации кэша)
-COPY package*.json ./
-
-# зависимости (включая dev-зависимости)
-RUN npm install
-
-# Копи проект в контейнер (кроме .dockerignore)
+# Шаг 1: Сборка
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
 COPY . .
+RUN dotnet publish -c Release -o /app
 
-#порт, который использует приложение
-EXPOSE 3000
-
-# Запуск
-CMD ["npm", "start"]
+# Шаг 2: Запуск
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app .
+ENTRYPOINT ["dotnet", "escadre.io-master-server.dll"]
