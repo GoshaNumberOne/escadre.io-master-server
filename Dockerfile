@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Копируем файлы проекта
-COPY *.csproj .
+COPY MasterServer.csproj .
 RUN dotnet restore
 
 # Копируем всё остальное и собираем
