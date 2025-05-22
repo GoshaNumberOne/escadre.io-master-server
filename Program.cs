@@ -16,7 +16,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection(); закоментил на время
+app.UseHttpsRedirection();
 
 app.UseRouting();
 
@@ -42,9 +42,9 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
-app.MapControllers();    закоментил 
+app.MapControllers();
 //app.MapHub<YourMasterHub>("/masterHub"); 
-app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub");   закоментил
+app.MapHub<MasterServer.Hubs.MasterHub>("/masterhub");
 
 app.Run();
 
