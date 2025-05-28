@@ -24,12 +24,14 @@ namespace MasterServer.Hubs
             AppDbContext context,
             IEmailService emailService)
         {
-            _authService = authService;
-            _tokenService = tokenService;
-            _userService = userService;
-            _gameServerManager = gameServerManager;
-            _context = context;
-            _emailService = emailService; 
+            Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub CONSTRUCTOR: ENTERED !!!!!!!!!!!!!!!!!"); // ВАЖНЫЙ ЛОГ
+            _authService = authService ?? throw new ArgumentNullException(nameof(authService));
+            _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
+            _userService = userService ?? throw new ArgumentNullException(nameof(userService));
+            _gameServerManager = gameServerManager ?? throw new ArgumentNullException(nameof(gameServerManager));
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub CONSTRUCTOR: EXITED SUCCESSFULLY !!!!!!!!!!!!!!!!!"); // ВАЖНЫЙ ЛОГ
         }
 
         public async Task Login(LoginRequestDto credentials)
@@ -73,7 +75,9 @@ namespace MasterServer.Hubs
             {
                 AccessToken = tokens.AccessToken,
                 AccessTokenExpiration = tokens.AccessTokenExpiration,
-                RefreshToken = tokens.RefreshToken
+                RefreshToken = tokens.RefreshToken, 
+                UserId = authResult.UserId,
+                Nickname = user.Nickname
             };
             await Clients.Caller.SendAsync("LoginSuccess", response);
         }
@@ -96,23 +100,70 @@ namespace MasterServer.Hubs
             await Clients.Caller.SendAsync("RegistrationSuccess", "User registered successfully. Please check your email to confirm your account.");
         }
 
-        public async Task GetAnonymousToken(AnonymousTokenRequestDto request)
+        /*public async Task<TokenResponseDto> GetAnonymousToken(AnonymousTokenRequestDto request)
         {
-             if (request == null || string.IsNullOrWhiteSpace(request.Nickname))
-             {
-                 await Clients.Caller.SendAsync("AnonymousTokenFailed", "Nickname is required.");
-                 return;
-             }
+            if (request == null || string.IsNullOrWhiteSpace(request.Nickname))
+            {
+                // Это будет поймано клиентом в catch (HubException ex)
+                throw new HubException("Nickname is required for an anonymous token.");
+            }
 
-             var tokenInfo = await _tokenService.GenerateAnonymousAccessTokenAsync(request.Nickname);
-             var response = new TokenResponseDto {
-                AccessToken = tokenInfo.AccessToken,
-                AccessTokenExpiration = tokenInfo.AccessTokenExpiration,
-                NewRefreshToken = null
-             };
-             await Clients.Caller.SendAsync("ReceiveAnonymousToken", response);
+            try
+            {
+                // Этот метод в ITokenService должен возвращать что-то вроде AccessTokenInfo
+                var tokenInfo = await _tokenService.GenerateAnonymousAccessTokenAsync(request.Nickname);
+
+                if (tokenInfo == null || string.IsNullOrEmpty(tokenInfo.AccessToken))
+                {
+                    throw new HubException("Failed to generate anonymous access token on the server.");
+                }
+
+                var response = new TokenResponseDto
+                {
+                    AccessToken = tokenInfo.AccessToken,
+                    AccessTokenExpiration = tokenInfo.AccessTokenExpiration,
+                    NewRefreshToken = null, // Анонимный доступ обычно не имеет refresh токена
+                    // UserId здесь может быть null или специальное значение, если оно есть в tokenInfo
+                    // или если вы его генерируете здесь для TokenResponseDto
+                };
+                return response;
+            }
+            catch (Exception ex)
+            {
+                // Логирование полного исключения на сервере очень важно
+                // _logger.LogError(ex, "Error generating anonymous token for nickname {Nickname}", request.Nickname);
+                //Console.WriteLine($"Error in GetAnonymousToken: {ex.ToString()}"); // Временный лог, если нет ILogger
+                //throw new HubException("An internal server error occurred while generating the anonymous token.", ex);
+                // Если используете ILogger:
+                // _logger.LogError(ex, "Error in GetAnonymousToken for nickname {Nickname}. Exception: {ExceptionDetails}", request.Nickname, ex.ToString());
+                
+                // Если нет ILogger под рукой, то хотя бы в консоль:
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION IN GetAnonymousToken !!!!!!!!!!!!!!!!!");
+                Console.WriteLine($"NICKNAME: {request?.Nickname}"); // Добавил вывод никнейма для контекста
+                Console.WriteLine($"EXCEPTION TYPE: {ex.GetType().FullName}");
+                Console.WriteLine($"MESSAGE: {ex.Message}");
+                Console.WriteLine($"STACK TRACE: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"--- INNER EXCEPTION ---");
+                    Console.WriteLine($"INNER EXCEPTION TYPE: {ex.InnerException.GetType().FullName}");
+                    Console.WriteLine($"INNER MESSAGE: {ex.InnerException.Message}");
+                    Console.WriteLine($"INNER STACK TRACE: {ex.InnerException.StackTrace}");
+                }
+                Console.WriteLine($"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                
+                throw new HubException("An internal server error occurred while generating the anonymous token.", ex);
+            }
+        }*/
+
+        // MasterHub.cs
+        public async Task<string> ObtainAnonymousAccessToken() // УБРАЛИ ПАРАМЕТР, ИЗМЕНИЛИ ТИП ВОЗВРАТА ДЛЯ ПРОСТОТЫ
+        {
+            Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken: MINIMAL NO_PARAM METHOD ENTERED !!!!!!!!!!!!!!!!!");
+            await Task.Delay(10); // Просто чтобы был await
+            // return new TokenResponseDto { AccessToken = "test_token", AccessTokenExpiration = DateTime.UtcNow.AddHours(1) };
+            return "Test_Token_From_Minimal_Method";
         }
-
         public async Task RefreshToken(RefreshTokenRequestDto request)
         {
             if (request == null || string.IsNullOrEmpty(request.RefreshToken))

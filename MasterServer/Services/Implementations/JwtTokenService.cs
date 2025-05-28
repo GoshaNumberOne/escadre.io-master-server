@@ -22,9 +22,56 @@ namespace MasterServer.Services.Implementations
 
         public JwtTokenService(IOptions<JwtSettings> jwtSettingsOptions, AppDbContext context)
         {
-            _jwtSettings = jwtSettingsOptions.Value;
-            _context = context;
-            _signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
+            //_jwtSettings = jwtSettingsOptions.Value;
+            //_context = context;
+            //_signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
+                    Console.WriteLine("!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: START !!!!!!!!!!!!!!!!!"); // ДОБАВЬТЕ ЭТУ СТРОКУ
+            try
+            {
+                _jwtSettings = jwtSettingsOptions.Value;
+                if (_jwtSettings == null)
+                {
+                    Console.WriteLine("!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: _jwtSettings IS NULL after jwtSettingsOptions.Value !!!!!!!!!!!!!!!!!");
+                    // Можно здесь выбросить исключение или как-то обработать, но для диагностики пока хватит лога
+                }
+                else
+                {
+                    // Выведем значения, чтобы точно их видеть
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: SecretKey IS '{_jwtSettings.SecretKey}' !!!!!!!!!!!!!!!!!");
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: Issuer IS '{_jwtSettings.Issuer}' !!!!!!!!!!!!!!!!!");
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: Audience IS '{_jwtSettings.Audience}' !!!!!!!!!!!!!!!!!");
+                }
+
+                _context = context;
+
+                // Добавим явную проверку _jwtSettings и _jwtSettings.SecretKey ПЕРЕД использованием
+                if (_jwtSettings == null || string.IsNullOrEmpty(_jwtSettings.SecretKey))
+                {
+                    Console.WriteLine("!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: _jwtSettings OR _jwtSettings.SecretKey IS NULL/EMPTY before GetBytes !!!!!!!!!!!!!!!!!");
+                    // Это критическая ошибка, токен не создать. Выбрасываем исключение.
+                    throw new InvalidOperationException("JwtSettings or JwtSettings.SecretKey is not configured correctly.");
+                }
+
+                _signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
+                Console.WriteLine("!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: _signingKey created successfully !!!!!!!!!!!!!!!!!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION IN JwtTokenService CONSTRUCTOR !!!!!!!!!!!!!!!!!");
+                Console.WriteLine($"EXCEPTION TYPE: {ex.GetType().FullName}");
+                Console.WriteLine($"MESSAGE: {ex.Message}");
+                Console.WriteLine($"STACK TRACE: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"--- INNER EXCEPTION ---");
+                    Console.WriteLine($"INNER EXCEPTION TYPE: {ex.InnerException.GetType().FullName}");
+                    Console.WriteLine($"INNER MESSAGE: {ex.InnerException.Message}");
+                    Console.WriteLine($"INNER STACK TRACE: {ex.InnerException.StackTrace}");
+                }
+                Console.WriteLine($"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                throw; // Перебрасываем исключение, чтобы DI не смог создать сервис, если конструктор упал
+            }
+            Console.WriteLine("!!!!!!!!!!!!!!!!! JwtTokenService CONSTRUCTOR: END !!!!!!!!!!!!!!!!!"); // ДОБАВЬТЕ ЭТУ СТРОКУ
         }
 
         public Task<TokenData> GenerateTokensAsync(string userId, IEnumerable<Claim>? userClaims = null)
