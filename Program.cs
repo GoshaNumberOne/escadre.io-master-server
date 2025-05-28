@@ -35,7 +35,7 @@ if (string.IsNullOrEmpty(connectionString))
 }
 if (!string.IsNullOrEmpty(connectionString))
 {
-   builder.Services.AddDbContext<AppDbContext>(options =>
+    builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<ITokenService, JwtTokenService>();
@@ -79,7 +79,7 @@ builder.Services.AddIdentityCore<User>(options =>
 .AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders().AddSignInManager<SignInManager<User>>(); // Добавляет провайдеры для генерации токенов (для email, сброса пароля и т.д.)
 
 if (jwtSettings != null && !string.IsNullOrEmpty(jwtSettings.SecretKey))
-{
+{/*
     builder.Services.AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -111,6 +111,65 @@ if (jwtSettings != null && !string.IsNullOrEmpty(jwtSettings.SecretKey))
                 }
                 return Task.CompletedTask;
             }
+        };
+    });
+    */builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtSettings.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwtSettings.Audience,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
+            ClockSkew = TimeSpan.Zero
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"]; // Получаем значение
+                var path = context.HttpContext.Request.Path;
+
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! JWT OnMessageReceived: Path='{path}', Raw AccessToken from Query='{accessToken}' (Type: {accessToken.GetType()}) !!!!!!!!!!!!!!!!!");
+
+                // Проверяем, существует ли ключ "access_token" в Query
+                if (context.Request.Query.ContainsKey("access_token"))
+                {
+                    // Если значение токена null, пустая строка или состоит из пробелов,
+                    // И это путь к нашему хабу,
+                    // то мы НЕ хотим, чтобы middleware аутентификации вообще пытался его обработать.
+                    if (string.IsNullOrWhiteSpace(accessToken.ToString()) && path.StartsWithSegments("/masterhub"))
+                    {
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! JWT OnMessageReceived: AccessToken from Query is NULL or WHITESPACE for /masterhub. Actively ignoring/removing it. !!!!!!!!!!!!!!!!!");
+                        // НЕ устанавливаем context.Token.
+                        // Попытка удалить его из Query может быть сложной и небезопасной здесь.
+                        // Вместо этого, давайте просто убедимся, что context.Token ТОЧНО НЕ УСТАНОВЛЕН.
+                        // Если middleware все равно его подхватывает из оригинального Request.Query,
+                        // то этот хак может не сработать.
+                        // Главное - не делать context.Token = accessToken;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(accessToken.ToString()) && path.StartsWithSegments("/masterhub"))
+                    {
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! JWT OnMessageReceived: Setting context.Token for /masterhub with token: '{accessToken}' !!!!!!!!!!!!!!!!!");
+                        context.Token = accessToken.ToString();
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! JWT OnMessageReceived: 'access_token' key NOT FOUND in Query for path '{path}'. !!!!!!!!!!!!!!!!!");
+                }
+                return Task.CompletedTask;
+            }
+            // ...
         };
     });
 }
