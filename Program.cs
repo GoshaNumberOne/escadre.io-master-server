@@ -18,6 +18,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
+if (jwtSettings == null || string.IsNullOrEmpty(jwtSettings.SecretKey)) // Добавьте другие критичные проверки
+{
+    throw new InvalidOperationException("JWT SecretKey (and other critical settings) are missing or incomplete in configuration. Application cannot start.");
+}
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 if (jwtSettings == null || string.IsNullOrEmpty(jwtSettings.SecretKey) || string.IsNullOrEmpty(jwtSettings.Issuer) || string.IsNullOrEmpty(jwtSettings.Audience))
@@ -33,6 +37,11 @@ if (!string.IsNullOrEmpty(connectionString))
 {
    builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
+    builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<ITokenService, JwtTokenService>();
+    builder.Services.AddScoped<IUserService, UserService>();
+    builder.Services.AddSingleton<IGameServerManager, InMemoryGameServerManager>();
+    builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
 }
 
 builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
@@ -42,16 +51,6 @@ if (smtpSettings == null || string.IsNullOrEmpty(smtpSettings.Host) /* ... и д
     Console.WriteLine("Error: SMTP settings are missing or incomplete.");
     // throw new InvalidOperationException("SMTP settings are missing or incomplete.");
 }
-
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<ITokenService, JwtTokenService>();
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
-builder.Services.AddSingleton<IGameServerManager, InMemoryGameServerManager>();
-builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
-
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();

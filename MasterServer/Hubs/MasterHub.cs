@@ -73,7 +73,9 @@ namespace MasterServer.Hubs
             {
                 AccessToken = tokens.AccessToken,
                 AccessTokenExpiration = tokens.AccessTokenExpiration,
-                RefreshToken = tokens.RefreshToken
+                RefreshToken = tokens.RefreshToken, 
+                UserId = authResult.UserId,
+                Nickname = user.Nickname
             };
             await Clients.Caller.SendAsync("LoginSuccess", response);
         }
@@ -96,21 +98,48 @@ namespace MasterServer.Hubs
             await Clients.Caller.SendAsync("RegistrationSuccess", "User registered successfully. Please check your email to confirm your account.");
         }
 
-        public async Task GetAnonymousToken(AnonymousTokenRequestDto request)
-        {
-             if (request == null || string.IsNullOrWhiteSpace(request.Nickname))
-             {
-                 await Clients.Caller.SendAsync("AnonymousTokenFailed", "Nickname is required.");
-                 return;
-             }
+        // В MasterHub.cs
 
-             var tokenInfo = await _tokenService.GenerateAnonymousAccessTokenAsync(request.Nickname);
-             var response = new TokenResponseDto {
-                AccessToken = tokenInfo.AccessToken,
-                AccessTokenExpiration = tokenInfo.AccessTokenExpiration,
-                NewRefreshToken = null
-             };
-             await Clients.Caller.SendAsync("ReceiveAnonymousToken", response);
+// Убедитесь, что у вас есть определение AccessTokenInfo где-то,
+// если _tokenService.GenerateAnonymousAccessTokenAsync его возвращает.
+// Например:
+// public record AccessTokenInfo(string AccessToken, DateTime AccessTokenExpiration);
+
+        public async Task<TokenResponseDto> GetAnonymousToken(AnonymousTokenRequestDto request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Nickname))
+            {
+                // Это будет поймано клиентом в catch (HubException ex)
+                throw new HubException("Nickname is required for an anonymous token.");
+            }
+
+            try
+            {
+                // Этот метод в ITokenService должен возвращать что-то вроде AccessTokenInfo
+                var tokenInfo = await _tokenService.GenerateAnonymousAccessTokenAsync(request.Nickname);
+
+                if (tokenInfo == null || string.IsNullOrEmpty(tokenInfo.AccessToken))
+                {
+                    throw new HubException("Failed to generate anonymous access token on the server.");
+                }
+
+                var response = new TokenResponseDto
+                {
+                    AccessToken = tokenInfo.AccessToken,
+                    AccessTokenExpiration = tokenInfo.AccessTokenExpiration,
+                    NewRefreshToken = null, // Анонимный доступ обычно не имеет refresh токена
+                    // UserId здесь может быть null или специальное значение, если оно есть в tokenInfo
+                    // или если вы его генерируете здесь для TokenResponseDto
+                };
+                return response;
+            }
+            catch (Exception ex)
+            {
+                // Логирование полного исключения на сервере очень важно
+                // _logger.LogError(ex, "Error generating anonymous token for nickname {Nickname}", request.Nickname);
+                Console.WriteLine($"Error in GetAnonymousToken: {ex.ToString()}"); // Временный лог, если нет ILogger
+                throw new HubException("An internal server error occurred while generating the anonymous token.", ex);
+            }
         }
 
         public async Task RefreshToken(RefreshTokenRequestDto request)
