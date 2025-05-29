@@ -4,7 +4,9 @@ using MasterServer.Services.Abstractions;
 using MasterServer.DTOs.Auth;          
 using MasterServer.DTOs.Server;     
 using MasterServer.Data;                    
-using System.Security.Claims;              
+using System.Security.Claims;           
+using System.Text.Json;   
+using System.Linq;
 
 namespace MasterServer.Hubs
 {
@@ -100,70 +102,79 @@ namespace MasterServer.Hubs
             await Clients.Caller.SendAsync("RegistrationSuccess", "User registered successfully. Please check your email to confirm your account.");
         }
 
-        /*public async Task<TokenResponseDto> GetAnonymousToken(AnonymousTokenRequestDto request)
+        public async Task<TokenResponseDto> GetAnonymousToken(JsonElement requestPayload)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.Nickname))
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): METHOD ENTERED. !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): Payload Kind: {requestPayload.ValueKind} !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): Payload RawText: {requestPayload.GetRawText()} !!!!!!!!!!!!!!!!!");
+
+            AnonymousTokenRequestDto request = null;
+            string nickname = null;
+
+            // ПРОВЕРЯЕМ, ЧТО ЭТО МАССИВ И БЕРЕМ ПЕРВЫЙ ЭЛЕМЕНТ
+            if (requestPayload.ValueKind == JsonValueKind.Array && requestPayload.GetArrayLength() > 0)
             {
-                // Это будет поймано клиентом в catch (HubException ex)
-                throw new HubException("Nickname is required for an anonymous token.");
+                JsonElement firstElement = requestPayload.EnumerateArray().FirstOrDefault();
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): First element Kind: {firstElement.ValueKind} !!!!!!!!!!!!!!!!!");
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): First element RawText: {firstElement.GetRawText()} !!!!!!!!!!!!!!!!!");
+
+                if (firstElement.ValueKind == JsonValueKind.Object)
+                {
+                    try
+                    {
+                        // Десериализуем ПЕРВЫЙ ЭЛЕМЕНТ МАССИВА в наш DTO
+                        request = firstElement.Deserialize<AnonymousTokenRequestDto>(new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                        });
+                        nickname = request?.Nickname;
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): Deserialized from first array element. Nickname: '{nickname ?? "NULL"}' !!!!!!!!!!!!!!!!!");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): FAILED to deserialize first array element: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                        throw new HubException("Failed to deserialize first array element payload.", ex);
+                    }
+                }
+            }
+            else if (requestPayload.ValueKind == JsonValueKind.Object) // На случай, если клиент вдруг начнет слать правильно
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): Payload was an OBJECT directly. !!!!!!!!!!!!!!!!!");
+                // ... (код для десериализации объекта, как раньше) ...
+                try
+                    {
+                        request = requestPayload.Deserialize<AnonymousTokenRequestDto>(new JsonSerializerOptions {
+                            PropertyNameCaseInsensitive = true,
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                        });
+                        nickname = request?.Nickname;
+                    }
+                    catch (Exception ex) { /* ... */ throw; }
+            }
+
+
+            if (string.IsNullOrWhiteSpace(nickname))
+            {
+                Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): Nickname is required, throwing HubException. !!!!!!!!!!!!!!!!!");
+                throw new HubException("Nickname is required and could not be extracted from payload (processed as JsonElement).");
             }
 
             try
             {
-                // Этот метод в ITokenService должен возвращать что-то вроде AccessTokenInfo
-                var tokenInfo = await _tokenService.GenerateAnonymousAccessTokenAsync(request.Nickname);
-
-                if (tokenInfo == null || string.IsNullOrEmpty(tokenInfo.AccessToken))
-                {
-                    throw new HubException("Failed to generate anonymous access token on the server.");
-                }
-
-                var response = new TokenResponseDto
-                {
-                    AccessToken = tokenInfo.AccessToken,
-                    AccessTokenExpiration = tokenInfo.AccessTokenExpiration,
-                    NewRefreshToken = null, // Анонимный доступ обычно не имеет refresh токена
-                    // UserId здесь может быть null или специальное значение, если оно есть в tokenInfo
-                    // или если вы его генерируете здесь для TokenResponseDto
-                };
+                Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): TRY BLOCK ENTERED with Nickname: " + nickname + " !!!!!!!!!!!!!!!!!");
+                var tokenInfo = await _tokenService.GenerateAnonymousAccessTokenAsync(nickname);
+                var response = new TokenResponseDto { AccessToken = tokenInfo.AccessToken, AccessTokenExpiration = tokenInfo.AccessTokenExpiration, NewRefreshToken = null };
+                Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken (JsonElement Array Fix): Returning response. !!!!!!!!!!!!!!!!!");
                 return response;
             }
             catch (Exception ex)
             {
-                // Логирование полного исключения на сервере очень важно
-                // _logger.LogError(ex, "Error generating anonymous token for nickname {Nickname}", request.Nickname);
-                //Console.WriteLine($"Error in GetAnonymousToken: {ex.ToString()}"); // Временный лог, если нет ILogger
-                //throw new HubException("An internal server error occurred while generating the anonymous token.", ex);
-                // Если используете ILogger:
-                // _logger.LogError(ex, "Error in GetAnonymousToken for nickname {Nickname}. Exception: {ExceptionDetails}", request.Nickname, ex.ToString());
-                
-                // Если нет ILogger под рукой, то хотя бы в консоль:
-                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION IN GetAnonymousToken !!!!!!!!!!!!!!!!!");
-                Console.WriteLine($"NICKNAME: {request?.Nickname}"); // Добавил вывод никнейма для контекста
-                Console.WriteLine($"EXCEPTION TYPE: {ex.GetType().FullName}");
-                Console.WriteLine($"MESSAGE: {ex.Message}");
-                Console.WriteLine($"STACK TRACE: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"--- INNER EXCEPTION ---");
-                    Console.WriteLine($"INNER EXCEPTION TYPE: {ex.InnerException.GetType().FullName}");
-                    Console.WriteLine($"INNER MESSAGE: {ex.InnerException.Message}");
-                    Console.WriteLine($"INNER STACK TRACE: {ex.InnerException.StackTrace}");
-                }
-                Console.WriteLine($"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                
-                throw new HubException("An internal server error occurred while generating the anonymous token.", ex);
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION IN TOKEN GENERATION (JsonElement Array Fix): {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                throw new HubException("Error generating token (processed as JsonElement).", ex);
             }
-        }*/
-
-        // MasterHub.cs
-        public async Task<string> ObtainAnonymousAccessToken() // УБРАЛИ ПАРАМЕТР, ИЗМЕНИЛИ ТИП ВОЗВРАТА ДЛЯ ПРОСТОТЫ
-        {
-            Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.GetAnonymousToken: MINIMAL NO_PARAM METHOD ENTERED !!!!!!!!!!!!!!!!!");
-            await Task.Delay(10); // Просто чтобы был await
-            // return new TokenResponseDto { AccessToken = "test_token", AccessTokenExpiration = DateTime.UtcNow.AddHours(1) };
-            return "Test_Token_From_Minimal_Method";
         }
+        
         public async Task RefreshToken(RefreshTokenRequestDto request)
         {
             if (request == null || string.IsNullOrEmpty(request.RefreshToken))

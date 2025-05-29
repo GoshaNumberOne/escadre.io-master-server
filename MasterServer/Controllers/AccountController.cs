@@ -1,5 +1,6 @@
 using MasterServer.Services.Abstractions;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations; 
 using System.Threading.Tasks;
 using System.Linq; // Для .Any() и string.Join()
 using System.Threading.Tasks;
@@ -15,6 +16,12 @@ namespace MasterServer.Controllers
         public AccountController(IAuthService authService)
         {
             _authService = authService;
+        }
+        public class ResendConfirmationEmailRequestDto
+        {
+            [Required] // Добавим атрибут валидации
+            [EmailAddress]
+            public required string Email { get; set; }
         }
 
         [HttpGet("confirm-email")]
@@ -40,6 +47,31 @@ namespace MasterServer.Controllers
                                    ? string.Join(", ", result.Errors)
                                    : result.Error ?? "Failed to confirm email.";
                 return BadRequest(errorMessages);
+            }
+        }
+        
+        [HttpPost("resend-confirmation-email")]
+        public async Task<IActionResult> ResendConfirmationEmail([FromBody] ResendConfirmationEmailRequestDto request)
+        {
+            if (!ModelState.IsValid) // Проверка валидации DTO
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _authService.ResendConfirmationEmailAsync(request.Email);
+
+            if (result.IsSuccess)
+            {
+                return Ok(new { message = result.Message });
+            }
+            else
+            {
+                // Если RequiresUserAction (например, email уже подтвержден), это может быть не ошибка, а информация
+                if (result.RequiresUserAction)
+                {
+                    return Conflict(new { message = result.Message }); // 409 Conflict, если email уже подтвержден
+                }
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = result.Message ?? "Failed to resend confirmation email." });
             }
         }
 

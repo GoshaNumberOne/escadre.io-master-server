@@ -84,7 +84,7 @@ namespace MasterServer.Services.Implementations
                 Email = registrationData.Email,
                 Nickname = registrationData.Nickname,
                 CreatedAt = DateTime.UtcNow
-                // IsEmailConfirmed будет false по умолчанию
+                //IsEmailConfirmed будет false по умолчанию
             };
 
             // UserManager сам хеширует пароль
@@ -115,24 +115,37 @@ namespace MasterServer.Services.Implementations
             }
 
 
-            // Генерация токена подтверждения Email через Identity
             var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            // Для URL токен нужно кодировать
             var encodedCode = WebUtility.UrlEncode(code);
-            // TODO: Сформировать URL правильно, используя настройки из IConfiguration
-            // var callbackUrl = $"{_configuration["App:ClientUrl"]}/confirm-email?userId={user.Id}&code={encodedCode}";
-            var callbackUrl = $"[ClientAppUrl]/confirm-email?userId={user.Id}&code={encodedCode}"; // ЗАМЕНИТЬ!
+
+            // Получаем базовый URL сервера из конфигурации
+            string? serverBaseUrl = _configuration["Application:ServerBaseUrl"];
+            if (string.IsNullOrEmpty(serverBaseUrl))
+            {
+                // Логируем предупреждение или ошибку, если URL не настроен
+                Console.WriteLine("Warning: Application:ServerBaseUrl is not configured in appsettings.json. Using default localhost:5076 for callback URL.");
+                serverBaseUrl = "http://localhost:5076"; // Запасной вариант, но лучше настроить
+            }
+
+            var callbackUrl = $"{serverBaseUrl}/api/Account/confirm-email?userId={user.Id}&code={encodedCode}";
 
             try
             {
-                await _emailService.SendEmailAsync(user.Email, "Confirm your MasterServer Account",
-                    $"Please confirm your account by clicking this link: <a href='{callbackUrl}'>Confirm Account</a>");
+                string emailBody = $"Please confirm your account by clicking this link: <a href='{callbackUrl}'>Confirm Account</a><br/>Or copy and paste this URL into your browser: {callbackUrl}";
+                await _emailService.SendEmailAsync(user.Email, "Confirm your MasterServer Account", emailBody); // Заменили комментарий на переменную
+                Console.WriteLine($"Confirmation email sent to {user.Email}. URL: {callbackUrl}");
             }
-            catch (Exception emailEx)
+            catch (Exception emailEx) // Лучше ловить более специфичное исключение, если SmtpEmailService его определяет
             {
-                Console.WriteLine($"Failed to send confirmation email to {user.Email}: {emailEx.Message}");
-                // Пользователь создан, но email не ушел. Логируем и продолжаем.
-                // Можно добавить сообщение в RegistrationResult.
+                Console.WriteLine($"CRITICAL: Failed to send confirmation email to {user.Email}: {emailEx.Message}. User account created but requires manual confirmation or resend.");
+                // В этом случае, возможно, стоит откатить создание пользователя или пометить его как "ожидающий отправки email"
+                // Или вернуть результат с ошибкой, чтобы UI мог это обработать
+                // Удаление пользователя, если email не ушел (более строгий вариант):
+                // await _userManager.DeleteAsync(user);
+                // return new RegistrationResult(false, Errors: new List<string> { "Failed to send confirmation email. Please try registering again later." });
+
+                // Вариант: пользователь создан, но email не ушел - сообщаем об этом
+                return new RegistrationResult(true, UserId: user.Id, Errors: new List<string> { $"User '{user.Email}' registered, but confirmation email could not be sent. Please contact support or try resending later." });
             }
 
             return new RegistrationResult(true, UserId: user.Id);
@@ -158,14 +171,25 @@ namespace MasterServer.Services.Implementations
 
             var code = await _userManager.GeneratePasswordResetTokenAsync(user);
             var encodedCode = WebUtility.UrlEncode(code);
-            // TODO: Сформировать URL правильно
-            // var callbackUrl = $"{_configuration["App:ClientUrl"]}/reset-password?userId={user.Id}&code={encodedCode}";
-            var callbackUrl = $"[ClientAppUrl]/reset-password?userId={user.Id}&code={encodedCode}"; // ЗАМЕНИТЬ!
+
+            string? serverBaseUrl = _configuration["Application:ServerBaseUrl"]; // Или ClientAppBaseUrl, если форма на клиенте
+            if (string.IsNullOrEmpty(serverBaseUrl))
+            {
+                Console.WriteLine("Warning: Application:ServerBaseUrl (or relevant client URL) is not configured. Using default for password reset callback URL.");
+                serverBaseUrl = "http://localhost:5076"; // Или клиентский URL
+            }
+
+            // Этот URL должен вести на страницу, где пользователь вводит новый пароль.
+            // Эта страница затем отправит userId, code и newPassword на ваш эндпоинт /api/Account/reset-password (POST)
+            // или на метод хаба ResetPassword.
+            // Пока что для примера, пусть ссылка содержит все необходимое:
+            var clientResetPageUrl = _configuration["Application:ClientPasswordResetUrl"] ?? $"{serverBaseUrl}/reset-password-form"; // Пример
+            var callbackUrl = $"{clientResetPageUrl}?userId={user.Id}&code={encodedCode}"; // Клиентская страница извлечет userId и code из URL
 
             try
             {
-                await _emailService.SendEmailAsync(user.Email, "Reset Your MasterServer Password",
-                   $"Please reset your password by clicking here: <a href='{callbackUrl}'>Reset Password</a>");
+                string emailBody = $"Please reset your password by clicking here: <a href='{callbackUrl}'>Reset Password</a><br/>Or copy and paste this URL into your browser: {callbackUrl}";
+                await _emailService.SendEmailAsync(user.Email, "Reset Your MasterServer Password", emailBody); // Заменили комментарий
             }
              catch (Exception emailEx)
             {
@@ -230,7 +254,6 @@ namespace MasterServer.Services.Implementations
                 return new PasswordResetResult(false, Errors: result.Errors.Select(e => e.Description));
             }
         }
-
         public async Task<EmailConfirmationResult> ConfirmEmailAsync(string userId, string code)
         {
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code))
@@ -256,5 +279,46 @@ namespace MasterServer.Services.Implementations
                 return new EmailConfirmationResult(false, Errors: result.Errors.Select(e => e.Description));
             }
         }
+        public async Task<ResendConfirmationEmailResult> ResendConfirmationEmailAsync(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+            {
+                // Не раскрываем информацию о существовании пользователя
+                return new ResendConfirmationEmailResult(true, Message: "If an account with that email exists and is pending confirmation, a new email has been sent.");
+            }
+
+            if (await _userManager.IsEmailConfirmedAsync(user))
+            {
+                return new ResendConfirmationEmailResult(false, Message: "This email address is already confirmed.", RequiresUserAction: true);
+            }
+
+            // Генерация нового кода и отправка письма
+            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedCode = WebUtility.UrlEncode(code);
+            string? serverBaseUrl = _configuration["Application:ServerBaseUrl"];
+            if (string.IsNullOrEmpty(serverBaseUrl))
+            {
+                Console.WriteLine("Warning: Application:ServerBaseUrl is not configured. Using default for resend email callback.");
+                serverBaseUrl = "http://localhost:5076";
+            }
+            var callbackUrl = $"{serverBaseUrl}/api/Account/confirm-email?userId={user.Id}&code={encodedCode}";
+
+            try
+            {
+                string emailBody = $"Please confirm your account by clicking this link: <a href='{callbackUrl}'>Confirm Account</a><br/>Or copy and paste this URL into your browser: {callbackUrl}";
+                await _emailService.SendEmailAsync(user.Email, "Confirm your MasterServer Account (Resend)", emailBody); // Заменили комментарий
+                
+                Console.WriteLine($"Re-sent confirmation email to {user.Email}. URL: {callbackUrl}");
+                return new ResendConfirmationEmailResult(true, Message: "A new confirmation email has been sent to your email address.");
+            }
+            catch (Exception emailEx)
+            {
+                Console.WriteLine($"Failed to re-send confirmation email to {user.Email}: {emailEx.Message}");
+                // Не раскрываем ошибку пользователю, но логируем
+                return new ResendConfirmationEmailResult(false, Message: "An error occurred while trying to resend the confirmation email. Please try again later.");
+            }
+        }
+    
     }
 }

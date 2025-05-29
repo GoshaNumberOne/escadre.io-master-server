@@ -9,6 +9,7 @@ using MasterServer.Hubs;
 using MasterServer.Services.Abstractions;
 using MasterServer.Services.Implementations;
 using Microsoft.AspNetCore.Identity;
+using System.Text.Json;
 using MasterServer.Configuration;
 using MasterServer.Services.Abstractions;
 using MasterServer.Services.Implementations;
@@ -52,8 +53,22 @@ if (smtpSettings == null || string.IsNullOrEmpty(smtpSettings.Host) /* ... и д
     // throw new InvalidOperationException("SMTP settings are missing or incomplete.");
 }
 
-builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        // options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase; // Можно также явно указать, если нужно
+    });
+
+// Если вы также используете Controllers и хотите такое же поведение для них:
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        //options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        // options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    });
 
 // --- ДОБАВЛЕНИЕ IDENTITY ---
 builder.Services.AddIdentityCore<User>(options =>

@@ -11,7 +11,7 @@ namespace MasterServer.Services.Abstractions
     public record PasswordResetRequestResult(bool IsSuccess, string? Error = null);
     public record PasswordResetResult(bool IsSuccess, string? Error = null, IEnumerable<string>? Errors = null);
     public record EmailConfirmationResult(bool IsSuccess, string? Error = null, IEnumerable<string>? Errors = null); // Добавил Errors на всякий случай
-
+    public record ResendConfirmationEmailResult(bool IsSuccess, string? Message = null, bool RequiresUserAction = false);
 
     public interface IAuthService
     {
@@ -21,5 +21,6 @@ namespace MasterServer.Services.Abstractions
         Task<PasswordResetRequestResult> RequestPasswordResetAsync(string email);
         Task<PasswordResetResult> ResetPasswordAsync(string userId, string code, string newPassword);
         Task<EmailConfirmationResult> ConfirmEmailAsync(string userId, string code); // Изменили: теперь принимаем userId и code
+        Task<ResendConfirmationEmailResult> ResendConfirmationEmailAsync(string email); // Новый метод
     }
 }
