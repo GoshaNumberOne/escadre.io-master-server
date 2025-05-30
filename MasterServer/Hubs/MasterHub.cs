@@ -36,39 +36,100 @@ namespace MasterServer.Hubs
             Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub CONSTRUCTOR: EXITED SUCCESSFULLY !!!!!!!!!!!!!!!!!"); // ВАЖНЫЙ ЛОГ
         }
 
-        public async Task Login(LoginRequestDto credentials)
+        public async Task Login(JsonElement requestPayload) // Изменяем тип параметра
         {
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): METHOD ENTERED. !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): Payload Kind: {requestPayload.ValueKind} !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): Payload RawText: {requestPayload.GetRawText()} !!!!!!!!!!!!!!!!!");
+
+            LoginRequestDto credentials = null;
+
+            // Обработка случая, когда клиент шлет массив с одним элементом
+            if (requestPayload.ValueKind == JsonValueKind.Array && requestPayload.GetArrayLength() > 0)
+            {
+                JsonElement firstElement = requestPayload.EnumerateArray().FirstOrDefault();
+                if (firstElement.ValueKind == JsonValueKind.Object)
+                {
+                    try
+                    {
+                        credentials = firstElement.Deserialize<LoginRequestDto>(new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase // Важно для консистентности
+                        });
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): Deserialized from first array element. Identifier: '{credentials?.Identifier}' !!!!!!!!!!!!!!!!!");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): FAILED to deserialize first array element: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                        await Clients.Caller.SendAsync("LoginFailed", "Invalid request format."); // Отправляем ошибку клиенту
+                        return;
+                    }
+                }
+            }
+            else if (requestPayload.ValueKind == JsonValueKind.Object) // Если клиент вдруг отправит правильно
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): Payload was an OBJECT directly. !!!!!!!!!!!!!!!!!");
+                try
+                {
+                    credentials = requestPayload.Deserialize<LoginRequestDto>(new JsonSerializerOptions {
+                        PropertyNameCaseInsensitive = true,
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): FAILED to deserialize object payload: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                    await Clients.Caller.SendAsync("LoginFailed", "Invalid request format.");
+                    return;
+                }
+            }
+
             if (credentials == null || string.IsNullOrEmpty(credentials.Identifier) || string.IsNullOrEmpty(credentials.Password))
             {
+                Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): Invalid login data after parsing. !!!!!!!!!!!!!!!!!");
                 await Clients.Caller.SendAsync("LoginFailed", "Identifier and password are required.");
                 return;
             }
 
+            // Вызываем существующий сервис для валидации и генерации токенов
             var authResult = await _authService.ValidateUserCredentialsAsync(credentials.Identifier, credentials.Password);
 
-            if (!authResult.IsSuccess || authResult.UserId == null)
+            if (!authResult.IsSuccess || string.IsNullOrEmpty(authResult.UserId)) // Проверяем и UserId
             {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): AuthService validation failed. Error: {authResult.Error} !!!!!!!!!!!!!!!!!");
                 await Clients.Caller.SendAsync("LoginFailed", authResult.Error ?? "Invalid credentials or email not confirmed.");
                 return;
             }
 
-            var user = await _userService.FindUserByIdAsync(authResult.UserId);
-            var claims = new List<Claim>();
-            if (user != null)
-            {
-                claims.Add(new Claim(ClaimTypes.Email, user.Email));
-                claims.Add(new Claim("nickname", user.Nickname));
+            // Если валидация успешна, генерируем токены
+            var user = await _userService.FindUserByIdAsync(authResult.UserId); // Получаем пользователя для Nickname
+            if (user == null) { // Маловероятно, если ValidateUserCredentialsAsync вернул UserId, но проверим
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): User not found by ID {authResult.UserId} after successful validation. !!!!!!!!!!!!!!!!!");
+                await Clients.Caller.SendAsync("LoginFailed", "User data inconsistency error.");
+                return;
             }
 
-            var tokens = await _tokenService.GenerateTokensAsync(authResult.UserId, claims);
+            var claims = new List<Claim>();
+            claims.Add(new Claim(ClaimTypes.Email, user.Email)); // Предполагаем, что Email есть у User
+            claims.Add(new Claim("nickname", user.Nickname));    // Nickname из сущности User
 
+            var tokens = await _tokenService.GenerateTokensAsync(authResult.UserId, claims);
+            
+            // Важно: AuthService или TokenService должны сохранять RefreshToken в БД.
+            // Если JwtTokenService.GenerateTokensAsync это делает и вызывает SaveChanges, то хорошо.
+            // Если нет, то здесь нужно await _context.SaveChangesAsync();
+            // В вашем JwtTokenService.GenerateTokensAsync нет SaveChanges, а в RefreshTokenAsync есть.
+            // Давайте добавим SaveChanges здесь, чтобы быть уверенными.
             try
             {
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(); // Сохраняем RefreshToken, добавленный в GenerateTokensAsync
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): Refresh token for user {authResult.UserId} saved. !!!!!!!!!!!!!!!!!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving refresh token for user {authResult.UserId}: {ex.Message}");
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): CRITICAL - Error saving refresh token for user {authResult.UserId}: {ex.Message} !!!!!!!!!!!!!!!!!");
+                // Это серьезная ошибка, пользователь не сможет обновлять токен
                 await Clients.Caller.SendAsync("LoginFailed", "Internal server error during token processing.");
                 return;
             }
@@ -77,28 +138,81 @@ namespace MasterServer.Hubs
             {
                 AccessToken = tokens.AccessToken,
                 AccessTokenExpiration = tokens.AccessTokenExpiration,
-                RefreshToken = tokens.RefreshToken, 
+                RefreshToken = tokens.RefreshToken,
                 UserId = authResult.UserId,
-                Nickname = user.Nickname
+                Nickname = user.Nickname // Nickname из сущности User
             };
+
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Login (JsonElement): User {user.Email} logged in. Sending LoginSuccess. !!!!!!!!!!!!!!!!!");
             await Clients.Caller.SendAsync("LoginSuccess", response);
         }
 
-        public async Task Register(RegisterRequestDto registrationData)
+        public async Task Register(JsonElement requestPayload) // Изменяем тип параметра
         {
-             if (registrationData == null || string.IsNullOrEmpty(registrationData.Email) || string.IsNullOrEmpty(registrationData.Password) || string.IsNullOrEmpty(registrationData.Nickname))
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): METHOD ENTERED. !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): Payload Kind: {requestPayload.ValueKind} !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): Payload RawText: {requestPayload.GetRawText()} !!!!!!!!!!!!!!!!!");
+
+            RegisterRequestDto registrationData = null;
+
+            if (requestPayload.ValueKind == JsonValueKind.Array && requestPayload.GetArrayLength() > 0)
             {
+                JsonElement firstElement = requestPayload.EnumerateArray().FirstOrDefault();
+                if (firstElement.ValueKind == JsonValueKind.Object)
+                {
+                    try
+                    {
+                        registrationData = firstElement.Deserialize<RegisterRequestDto>(new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                        });
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): Deserialized from first array element. Email: '{registrationData?.Email}' !!!!!!!!!!!!!!!!!");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): FAILED to deserialize first array element: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                        await Clients.Caller.SendAsync("RegistrationFailed", new List<string> { "Invalid request format." });
+                        return;
+                    }
+                }
+            }
+            else if (requestPayload.ValueKind == JsonValueKind.Object) // На случай, если клиент вдруг начнет слать правильно
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): Payload was an OBJECT directly. !!!!!!!!!!!!!!!!!");
+                try
+                {
+                    registrationData = requestPayload.Deserialize<RegisterRequestDto>(new JsonSerializerOptions {
+                        PropertyNameCaseInsensitive = true,
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): FAILED to deserialize object payload: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                    await Clients.Caller.SendAsync("RegistrationFailed", new List<string> { "Invalid request format." });
+                    return;
+                }
+            }
+
+            if (registrationData == null || string.IsNullOrEmpty(registrationData.Email) || string.IsNullOrEmpty(registrationData.Password) || string.IsNullOrEmpty(registrationData.Nickname))
+            {
+                Console.WriteLine("!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): Invalid registration data after parsing. !!!!!!!!!!!!!!!!!");
                 await Clients.Caller.SendAsync("RegistrationFailed", new List<string> { "Email, password, and nickname are required." });
                 return;
             }
 
+            // Вызываем существующий сервис регистрации
             var registrationResult = await _authService.RegisterUserAsync(registrationData);
 
             if (!registrationResult.IsSuccess)
             {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): AuthService registration failed. Errors: {string.Join(", ", registrationResult.Errors ?? new List<string>())} !!!!!!!!!!!!!!!!!");
                 await Clients.Caller.SendAsync("RegistrationFailed", registrationResult.Errors ?? new List<string> { "Unknown registration error." });
                 return;
             }
+
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.Register (JsonElement): User {registrationData.Email} registered by AuthService. Sending success to client. !!!!!!!!!!!!!!!!!");
             await Clients.Caller.SendAsync("RegistrationSuccess", "User registered successfully. Please check your email to confirm your account.");
         }
 
