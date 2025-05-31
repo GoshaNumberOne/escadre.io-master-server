@@ -7,6 +7,8 @@ using MasterServer.Data;
 using System.Security.Claims;           
 using System.Text.Json;   
 using System.Linq;
+using MasterServer.DTOs;
+using Microsoft.EntityFrameworkCore;
 
 namespace MasterServer.Hubs
 {
@@ -379,6 +381,78 @@ namespace MasterServer.Hubs
                                     ? string.Join(", ", result.Errors)
                                     : result.Error ?? "Failed to confirm email.";
                 await Clients.Caller.SendAsync("EmailConfirmationFailed", errorMessages);
+            }
+        }
+
+        // MasterHub.cs
+        [Authorize]
+        public async Task<PlayerStatsDto> GetMyStats()
+        {
+            Console.WriteLine("!!!!!!!!!!!!!!!!! GetMyStats: METHOD ENTERED !!!!!!!!!!!!!!!!!");
+            var userId = Context.UserIdentifier;
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! GetMyStats: UserIdentifier from Context: '{userId ?? "NULL"}' !!!!!!!!!!!!!!!!!");
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                Console.WriteLine("!!!!!!!!!!!!!!!!! GetMyStats: UserIdentifier is NULL or Empty! Throwing HubException. !!!!!!!!!!!!!!!!!");
+                throw new HubException("User not authenticated or UserIdentifier missing.");
+            }
+
+            try
+            {
+                var user = await _userService.FindUserByIdAsync(userId);
+                if (user == null)
+                {
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! GetMyStats: User NOT FOUND in DB for UserId: {userId}! Throwing HubException. !!!!!!!!!!!!!!!!!");
+                    throw new HubException("User not found in database.");
+                }
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! GetMyStats: User found: {user.UserName}, Nickname: {user.Nickname} !!!!!!!!!!!!!!!!!");
+
+                var playerStat = await _context.PlayerStats
+                                        .AsNoTracking() // Добавляем AsNoTracking, если не собираемся изменять статистику здесь
+                                        .FirstOrDefaultAsync(ps => ps.UserId == userId);
+
+                if (playerStat == null)
+                {
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! GetMyStats: PlayerStat NOT FOUND for UserId: {userId}. Returning default stats. !!!!!!!!!!!!!!!!!");
+                    return new PlayerStatsDto
+                    {
+                        Nickname = user.Nickname, // Nickname берем из user, так как он точно есть
+                        Kills = 0,
+                        Deaths = 0,
+                        PlayTime = "00:00:00",
+                        KDRatio = 0
+                    };
+                }
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! GetMyStats: PlayerStat FOUND: Kills={playerStat.Kills}, Deaths={playerStat.Deaths}, PlayTime={playerStat.PlayTime} !!!!!!!!!!!!!!!!!");
+
+                float kdRatio = (playerStat.Deaths > 0) ? (float)playerStat.Kills / playerStat.Deaths : playerStat.Kills;
+                var statsDto = new PlayerStatsDto
+                {
+                    Nickname = user.Nickname,
+                    Kills = playerStat.Kills,
+                    Deaths = playerStat.Deaths,
+                    PlayTime = playerStat.PlayTime.ToString(@"hh\:mm\:ss"),
+                    KDRatio = kdRatio
+                };
+                Console.WriteLine("!!!!!!!!!!!!!!!!! GetMyStats: Returning PlayerStatsDto SUCCESSFULLY. !!!!!!!!!!!!!!!!!");
+                return statsDto;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION in GetMyStats for UserId: {userId} !!!!!!!!!!!!!!!!!");
+                Console.WriteLine($"EXCEPTION_TYPE: {ex.GetType().FullName}");
+                Console.WriteLine($"MESSAGE: {ex.Message}");
+                Console.WriteLine($"STACK_TRACE: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"--- INNER_EXCEPTION ---");
+                    Console.WriteLine($"INNER_EXCEPTION_TYPE: {ex.InnerException.GetType().FullName}");
+                    Console.WriteLine($"INNER_MESSAGE: {ex.InnerException.Message}");
+                    Console.WriteLine($"INNER_STACK_TRACE: {ex.InnerException.StackTrace}");
+                }
+                Console.WriteLine($"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                throw new HubException("An error occurred while retrieving player stats.", ex); // Перебрасываем с деталями
             }
         }
 
