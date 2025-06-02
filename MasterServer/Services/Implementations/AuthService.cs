@@ -9,7 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Net; // Для WebUtility.UrlEncode
+using System.Net;
+using Microsoft.EntityFrameworkCore; // Для WebUtility.UrlEncode
 
 namespace MasterServer.Services.Implementations
 {
@@ -54,7 +55,7 @@ namespace MasterServer.Services.Implementations
 
             if (user == null)
             {
-                return new AuthResult(false, Error: "User not found.");
+                return new AuthResult(false, Error: "Пользователь не найден.");
             }
 
             // CheckPasswordSignInAsync проверяет пароль, а также флаги (IsEmailConfirmed, IsLockedOut и т.д.)
@@ -67,17 +68,30 @@ namespace MasterServer.Services.Implementations
             }
             if (result.IsNotAllowed) // Например, Email не подтвержден (если options.SignIn.RequireConfirmedEmail = true)
             {
-                return new AuthResult(false, Error: "Login not allowed. Please confirm your email or check account status.");
+                return new AuthResult(false, Error: "Вход в систему не разрешен. Пожалуйста, подтвердите свою электронную почту или проверьте состояние учетной записи.");
             }
             if (result.IsLockedOut)
             {
-                return new AuthResult(false, Error: "Account locked out due to too many failed login attempts.");
+                return new AuthResult(false, Error: "Учетная запись заблокирована из-за слишком большого количества неудачных попыток входа.");
             }
-            return new AuthResult(false, Error: "Invalid password."); // Общая ошибка для неверного пароля
+            return new AuthResult(false, Error: "Неверный пароль."); // Общая ошибка для неверного пароля
         }
 
         public async Task<RegistrationResult> RegisterUserAsync(RegisterRequestDto registrationData)
         {
+            // Если нет поля NormalizedNickname, то можно так (но это может быть медленнее и зависит от настроек БД):
+            var existingUserByNickname = await _context.Users
+                .FirstOrDefaultAsync(u => u.Nickname.ToUpper() == registrationData.Nickname.ToUpper());
+
+
+            if (existingUserByNickname != null)
+            {
+                // Используем ваш RussianIdentityErrorDescriber или просто строку
+                // Чтобы использовать ErrorDescriber, нужно его экземпляр или передать IdentityError[]
+                // Проще пока так:
+                return new RegistrationResult(false, Errors: new List<string> { "Этот никнейм уже используется. Пожалуйста, выберите другой." });
+            }
+
             var user = new User
             {
                 UserName = registrationData.Email, // Или registrationData.Nickname, если он должен быть уникальным и использоваться для входа
@@ -233,13 +247,13 @@ namespace MasterServer.Services.Implementations
         {
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(newPassword) || newPassword.Length < 6)
             {
-                return new PasswordResetResult(false, Error: "User ID, reset code, and a valid new password are required.");
+                return new PasswordResetResult(false, Error: "Требуется идентификатор пользователя, код сброса и действующий новый пароль.");
             }
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
             {
-                return new PasswordResetResult(false, Error: "User not found.");
+                return new PasswordResetResult(false, Error: "Пользователь не найден.");
             }
 
             // Identity.ResetPasswordAsync сам обрабатывает декодирование токена
@@ -258,13 +272,13 @@ namespace MasterServer.Services.Implementations
         {
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code))
             {
-                return new EmailConfirmationResult(false, Error: "User ID and confirmation code are required.");
+                return new EmailConfirmationResult(false, Error: "Требуется идентификатор пользователя и код подтверждения.");
             }
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
             {
-                return new EmailConfirmationResult(false, Error: "User not found.");
+                return new EmailConfirmationResult(false, Error: "Пользователь не найден.");
             }
 
             // Identity.ConfirmEmailAsync сам обрабатывает декодирование токена
@@ -290,7 +304,7 @@ namespace MasterServer.Services.Implementations
 
             if (await _userManager.IsEmailConfirmedAsync(user))
             {
-                return new ResendConfirmationEmailResult(false, Message: "This email address is already confirmed.", RequiresUserAction: true);
+                return new ResendConfirmationEmailResult(false, Message: "Этот адрес электронной почты уже подтвержден.", RequiresUserAction: true);
             }
 
             // Генерация нового кода и отправка письма

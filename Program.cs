@@ -91,7 +91,7 @@ builder.Services.AddIdentityCore<User>(options =>
     // --- Настройки подтверждения Email ---
     options.SignIn.RequireConfirmedEmail = true; // Требовать подтвержденный email для входа
 })
-.AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders().AddSignInManager<SignInManager<User>>(); // Добавляет провайдеры для генерации токенов (для email, сброса пароля и т.д.)
+.AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders().AddSignInManager<SignInManager<User>>().AddErrorDescriber<RussianIdentityErrorDescriber>(); // Добавляет провайдеры для генерации токенов (для email, сброса пароля и т.д.)
 
 if (jwtSettings != null && !string.IsNullOrEmpty(jwtSettings.SecretKey))
 {/*
