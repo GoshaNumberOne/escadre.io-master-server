@@ -251,6 +251,8 @@ app.UseHttpsRedirection();
 
 app.UseCors("AllowSpecificOrigin");
 
+app.UseStaticFiles();
+
 app.UseRouting();
 
 app.UseAuthentication();

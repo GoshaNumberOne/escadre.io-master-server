@@ -146,7 +146,7 @@ namespace MasterServer.Services.Implementations
             try
             {
                 string emailBody = $"Please confirm your account by clicking this link: <a href='{callbackUrl}'>Confirm Account</a><br/>Or copy and paste this URL into your browser: {callbackUrl}";
-                await _emailService.SendEmailAsync(user.Email, "Confirm your MasterServer Account", emailBody); // Заменили комментарий на переменную
+                await _emailService.SendEmailAsync(user.Email, "Confirm your Account", emailBody); // Заменили комментарий на переменную
                 Console.WriteLine($"Confirmation email sent to {user.Email}. URL: {callbackUrl}");
             }
             catch (Exception emailEx) // Лучше ловить более специфичное исключение, если SmtpEmailService его определяет
@@ -186,24 +186,24 @@ namespace MasterServer.Services.Implementations
             var code = await _userManager.GeneratePasswordResetTokenAsync(user);
             var encodedCode = WebUtility.UrlEncode(code);
 
-            string? serverBaseUrl = _configuration["Application:ServerBaseUrl"]; // Или ClientAppBaseUrl, если форма на клиенте
+            string? serverBaseUrl = _configuration["Application:ServerBaseUrl"];
             if (string.IsNullOrEmpty(serverBaseUrl))
             {
                 Console.WriteLine("Warning: Application:ServerBaseUrl (or relevant client URL) is not configured. Using default for password reset callback URL.");
-                serverBaseUrl = "http://localhost:5076"; // Или клиентский URL
+                serverBaseUrl = "http://localhost:5076";
             }
 
-            // Этот URL должен вести на страницу, где пользователь вводит новый пароль.
-            // Эта страница затем отправит userId, code и newPassword на ваш эндпоинт /api/Account/reset-password (POST)
-            // или на метод хаба ResetPassword.
-            // Пока что для примера, пусть ссылка содержит все необходимое:
-            var clientResetPageUrl = _configuration["Application:ClientPasswordResetUrl"] ?? $"{serverBaseUrl}/reset-password-form"; // Пример
-            var callbackUrl = $"{clientResetPageUrl}?userId={user.Id}&code={encodedCode}"; // Клиентская страница извлечет userId и code из URL
+            // Указываем путь к нашей HTML странице
+            var clientResetPageSegment = "/reset-password-info.html"; 
+            var callbackUrl = $"{serverBaseUrl}{clientResetPageSegment}?userId={user.Id}&code={encodedCode}";
 
+            Console.WriteLine($"DEBUG: Password Reset Link generated: {callbackUrl}");
+            Console.WriteLine($"DEBUG: For Password Reset - UserId: {user.Id}, Code (Token): {code}");
+            
             try
             {
                 string emailBody = $"Please reset your password by clicking here: <a href='{callbackUrl}'>Reset Password</a><br/>Or copy and paste this URL into your browser: {callbackUrl}";
-                await _emailService.SendEmailAsync(user.Email, "Reset Your MasterServer Password", emailBody); // Заменили комментарий
+                await _emailService.SendEmailAsync(user.Email, "Reset Your Password", emailBody); // Заменили комментарий
             }
              catch (Exception emailEx)
             {
@@ -321,7 +321,7 @@ namespace MasterServer.Services.Implementations
             try
             {
                 string emailBody = $"Please confirm your account by clicking this link: <a href='{callbackUrl}'>Confirm Account</a><br/>Or copy and paste this URL into your browser: {callbackUrl}";
-                await _emailService.SendEmailAsync(user.Email, "Confirm your MasterServer Account (Resend)", emailBody); // Заменили комментарий
+                await _emailService.SendEmailAsync(user.Email, "Confirm your Account (Resend)", emailBody); // Заменили комментарий
                 
                 Console.WriteLine($"Re-sent confirmation email to {user.Email}. URL: {callbackUrl}");
                 return new ResendConfirmationEmailResult(true, Message: "A new confirmation email has been sent to your email address.");

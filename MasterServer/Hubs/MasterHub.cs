@@ -316,37 +316,108 @@ namespace MasterServer.Hubs
             await Clients.Caller.SendAsync("TokenRefreshed", response);
         }
 
-        public async Task RequestPasswordReset(string email)
+       public async Task RequestPasswordReset(JsonElement payloadElement) // Изменили тип параметра
         {
-             if (string.IsNullOrEmpty(email))
-             {
-                 await Clients.Caller.SendAsync("PasswordResetRequested", "If an account with that email exists, a password reset link has been sent.");
-                 return;
-             }
-             await _authService.RequestPasswordResetAsync(email);
-             await Clients.Caller.SendAsync("PasswordResetRequested", "If an account with that email exists, a password reset link has been sent.");
-        }
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): METHOD ENTERED !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): Payload Kind: {payloadElement.ValueKind} !!!!!!!!!!!!!!!!!");
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): Payload RawText: {payloadElement.GetRawText()} !!!!!!!!!!!!!!!!!");
 
-        public async Task ResetPassword(string userId, string code, string newPassword) // Принимаем все три
-        {
-            // Базовая валидация здесь
-            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(newPassword))
+            string email = null;
+
+            // Проверяем, пришел ли массив, и берем первый элемент (который должен быть строкой email)
+            if (payloadElement.ValueKind == JsonValueKind.Array && payloadElement.GetArrayLength() > 0)
             {
-                await Clients.Caller.SendAsync("PasswordResetFailed", "User ID, reset code, and new password are required.");
+                JsonElement emailElement = payloadElement.EnumerateArray().FirstOrDefault();
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): First element Kind: {emailElement.ValueKind} !!!!!!!!!!!!!!!!!");
+                if (emailElement.ValueKind == JsonValueKind.String)
+                {
+                    email = emailElement.GetString();
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): Extracted email from array: '{email ?? "NULL"}' !!!!!!!!!!!!!!!!!");
+                }
+                else
+                {
+                    Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): First element in array was NOT a STRING. Kind: {emailElement.ValueKind} !!!!!!!!!!!!!!!!!");
+                }
+            }
+            // На случай, если клиент вдруг начнет слать просто строку (маловероятно, судя по ошибке)
+            else if (payloadElement.ValueKind == JsonValueKind.String)
+            {
+                email = payloadElement.GetString();
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): Extracted email directly as string: '{email ?? "NULL"}' !!!!!!!!!!!!!!!!!");
+            }
+
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): Email is NULL or WhiteSpace. Sending generic response. !!!!!!!!!!!!!!!!!");
+                // Все равно отправляем "успешный" ответ, чтобы не раскрывать существование email
+                await Clients.Caller.SendAsync("PasswordResetRequested", "If an account with that email exists, a password reset link has been sent.");
                 return;
             }
-            // Передаем все три параметра в сервис
-            var result = await _authService.ResetPasswordAsync(userId, code, newPassword);
-            if (result.IsSuccess)
+
+            try
             {
-                await Clients.Caller.SendAsync("PasswordResetSuccess", "Password has been reset successfully. Please login with your new password.");
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.RequestPasswordReset (JsonElement): Calling AuthService for email: {email} !!!!!!!!!!!!!!!!!");
+                await _authService.RequestPasswordResetAsync(email); // AuthService ожидает string email
+                                                                // AuthService сам отправит письмо
+                await Clients.Caller.SendAsync("PasswordResetRequested", "If an account with that email exists, a password reset link has been sent.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION in RequestPasswordReset for email {email}: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                // Клиенту все равно отправляем общее сообщение в случае ошибки, чтобы не раскрывать детали
+                await Clients.Caller.SendAsync("PasswordResetRequested", "If an account with that email exists, a password reset link has been sent.");
+            }
+        }
+
+        public async Task ResetPassword(JsonElement payloadElement) // Принимает один JsonElement
+        {
+            Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.ResetPassword (JsonElement): METHOD ENTERED. Payload RawText: {payloadElement.GetRawText()} !!!!!!!!!!!!!!!!!");
+            string userId = null;
+            string code = null;
+            string newPassword = null;
+
+            if (payloadElement.ValueKind == JsonValueKind.Array && payloadElement.GetArrayLength() == 3)
+            {
+                var argsArray = payloadElement.EnumerateArray().ToList();
+                if (argsArray[0].ValueKind == JsonValueKind.String) userId = argsArray[0].GetString();
+                if (argsArray[1].ValueKind == JsonValueKind.String) code = argsArray[1].GetString();
+                if (argsArray[2].ValueKind == JsonValueKind.String) newPassword = argsArray[2].GetString();
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.ResetPassword (JsonElement): Extracted: userId='{userId}', code='{code}', newPassword='{newPassword?.Length > 0}' !!!!!!!!!!!!!!!!!");
             }
             else
             {
-                var errorMessages = result.Errors != null && result.Errors.Any()
-                                ? string.Join(", ", result.Errors)
-                                : result.Error ?? "Failed to reset password.";
-                await Clients.Caller.SendAsync("PasswordResetFailed", errorMessages);
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.ResetPassword (JsonElement): Payload was not an array of 3 elements. Kind: {payloadElement.ValueKind} !!!!!!!!!!!!!!!!!");
+                await Clients.Caller.SendAsync("PasswordResetFailed", "Invalid request format.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(newPassword))
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! MasterHub.ResetPassword (JsonElement): One or more params are missing after extraction. !!!!!!!!!!!!!!!!!");
+                await Clients.Caller.SendAsync("PasswordResetFailed", "User ID, reset code, and new password are required.");
+                return;
+            }
+
+            try
+            {
+                var result = await _authService.ResetPasswordAsync(userId, code, newPassword);
+                if (result.IsSuccess)
+                {
+                    await Clients.Caller.SendAsync("PasswordResetSuccess", "Password has been reset successfully. Please login with your new password.");
+                }
+                else
+                {
+                    var errorMessages = result.Errors != null && result.Errors.Any()
+                                        ? string.Join(", ", result.Errors)
+                                        : result.Error ?? "Failed to reset password.";
+                    await Clients.Caller.SendAsync("PasswordResetFailed", errorMessages);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"!!!!!!!!!!!!!!!!! EXCEPTION in ResetPassword: {ex.ToString()} !!!!!!!!!!!!!!!!!");
+                await Clients.Caller.SendAsync("PasswordResetFailed", "An internal error occurred while resetting password.");
             }
         }
 
