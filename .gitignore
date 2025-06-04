@@ -40,6 +40,15 @@ bld/
 # Visual Studio 2017 auto generated files
 Generated\ Files/
 
+# Файлы конфигурации ASP.NET Core
+appsettings.json
+appsettings.*.json
+!appsettings.Example.json 
+
+# Локальные пользовательские настройки (часто содержат секреты)
+secrets.json
+appsettings.Local.json
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
